@@ -3,6 +3,8 @@ package main
 
 import "base:runtime"
 import win "core:sys/windows"
+import "core:strings"
+import "core:fmt"
 
 window_size : [2]i32 = {1000, 300}
 
@@ -24,7 +26,14 @@ default_applications := map[string]string{
 State :: struct {
     applications: [dynamic]List_Item,
 
-    selected_application_idx: i32
+    rect: win.RECT,
+
+    search_phrase: [256]win.WCHAR,
+    search_phrase_len: i32, 
+    search_results: [dynamic]^List_Item,
+
+
+    selected_application_idx: i32,
 }
 
 List_Item :: struct {
@@ -96,6 +105,54 @@ win_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, l
     case win.WM_CREATE: wm_create(hwnd, lparam)
     case win.WM_KEYDOWN: wm_keydown(hwnd, wparam)
 	case win.WM_PAINT: wm_paint(hwnd)
+    case win.WM_CHAR:
+        state := get_state(hwnd)
+        character := win.WCHAR(wparam)
+
+        switch character {
+        case 8: // Backspace
+            if state.search_phrase_len > 0 {
+                state.selected_application_idx = 0
+                state.search_phrase_len -= 1
+                state.search_phrase[state.search_phrase_len] = 0
+            }
+        case:
+            // Ignore control characters.
+            if character >= 32 && state.search_phrase_len < len(state.search_phrase)-1 {
+                state.selected_application_idx = 0
+
+                state.search_phrase[state.search_phrase_len] = character
+                state.search_phrase_len += 1
+                state.search_phrase[state.search_phrase_len] = 0
+
+                clear(&state.search_results)
+                pos_y : i32 = 35
+                for &item in state.applications {
+                    item.rect = {}
+                    phrase := win.utf16_to_utf8(state.search_phrase[:state.search_phrase_len]) or_else ""
+
+                    phrase_lower := strings.to_lower(phrase, context.temp_allocator)
+                    application_name_lower := strings.to_lower(item.application_name, context.temp_allocator)
+
+                    if strings.contains(application_name_lower, phrase_lower) {
+                        item.rect = win.RECT{
+                            left = 0,
+                            top = pos_y,
+                            right = window_size.x,
+                            bottom = pos_y + 20
+                        }
+                        pos_y += 25
+
+                        append(&state.search_results, &item)
+                    }
+                }
+                win.InvalidateRect(hwnd, &state.rect, win.TRUE)
+
+            }
+        }
+
+        win.InvalidateRect(hwnd, nil, win.FALSE)
+        return 0
 	case win.WM_DESTROY:
         win.PostQuitMessage(0)
         return 0
@@ -111,40 +168,40 @@ wm_keydown :: proc(hwnd: win.HWND, wparam: win.WPARAM) -> win.LRESULT {
         return 0
     }
 
-    if wparam == win.VK_UP {
-        old := state.applications[state.selected_application_idx]
+    if wparam == win.VK_UP && len(state.search_results) > 0 {
+        old := state.search_results[state.selected_application_idx]
         win.InvalidateRect(hwnd, &old.rect, win.FALSE)
 
         if state.selected_application_idx == 0 {
-            state.selected_application_idx = i32(len(state.applications)) - 1
+            state.selected_application_idx = i32(len(state.search_results)) - 1
         } else {
             state.selected_application_idx -= 1
         }
 
-        new := state.applications[state.selected_application_idx]
+        new := state.search_results[state.selected_application_idx]
         win.InvalidateRect(hwnd, &new.rect, win.FALSE)
         return 0
     }
 
-    if wparam == win.VK_DOWN {
-        old := state.applications[state.selected_application_idx]
+    if wparam == win.VK_DOWN && len(state.search_results) > 0 {
+        old := state.search_results[state.selected_application_idx]
         win.InvalidateRect(hwnd, &old.rect, win.FALSE)
 
         state.selected_application_idx += 1
-        if state.selected_application_idx >= i32(len(state.applications)) {
+        if state.selected_application_idx >= i32(len(state.search_results)) {
             state.selected_application_idx = 0
         } 
 
-        new := state.applications[state.selected_application_idx]
+        new := state.search_results[state.selected_application_idx]
         win.InvalidateRect(hwnd, &new.rect, win.FALSE)
 
         return 0
     }
 
     if wparam == win.VK_RETURN {
-        selected_program := state.applications[state.selected_application_idx]
+        selected_program := state.search_results[state.selected_application_idx]
 
-        shell_exec(hwnd, selected_program)
+        shell_exec(hwnd, selected_program^)
         return 0
 
     }
@@ -160,6 +217,7 @@ wm_create :: proc(hwnd: win.HWND, lparam: win.LPARAM) -> win.LRESULT {
     assert(state != nil)
 
     set_state(hwnd, state)
+    win.GetClientRect(hwnd, &state.rect)
 
     pos_y : i32 = 35
     for name, command in default_applications {
@@ -179,6 +237,11 @@ wm_create :: proc(hwnd: win.HWND, lparam: win.LPARAM) -> win.LRESULT {
         pos_y += 25
     }
 
+    for &x in state.applications {
+        append(&state.search_results, &x)
+    }
+
+
     return 0
 }
 
@@ -189,11 +252,25 @@ wm_paint :: proc(hwnd: win.HWND) -> win.LRESULT {
     ps: win.PAINTSTRUCT
     hdc := win.BeginPaint(hwnd, &ps)
 
-    // @todo: draw search phrase
+    win.FillRect(
+        hdc,
+        &state.rect,
+        win.GetSysColorBrush(win.COLOR_WINDOW),
+    )
 
-    for &item, idx in state.applications {
+    rect := win.RECT{0,5,1000,30}
+    win.FillRect(hdc, &rect, win.GetSysColorBrush(win.COLOR_WINDOW))
+    win.DrawTextW(
+        hdc,
+        cstring16(&state.search_phrase[0]),
+        -1,
+        &rect,
+        .DT_WORDBREAK,
+    )
+
+    fmt.println("draw: ", state.search_results)
+    for item, idx in state.search_results {
         name: cstring16 = win.utf8_to_wstring(item.application_name)
-
 
         if state.selected_application_idx == i32(idx) {
             win.FillRect(hdc, &item.rect, win.GetSysColorBrush(win.BLACK_BRUSH))
@@ -251,5 +328,5 @@ shell_exec :: proc(hwnd: win.HWND, item: List_Item) {
     win.CloseHandle(process.hProcess)
 
     // close launcher after
-    win.PostMessageA(hwnd, win.WM_CLOSE, 0, 0);
+    win.PostMessageA(hwnd, win.WM_CLOSE, 0, 0)
 }
