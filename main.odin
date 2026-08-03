@@ -49,6 +49,8 @@ List_Item :: struct {
 
 destroy_state :: proc(state: ^State) {
     delete(state.applications)
+    delete(state.search_results)
+    state.search_phrase[0] = 0
 
     free(state)
 }
