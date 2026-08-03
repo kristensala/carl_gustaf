@@ -5,10 +5,15 @@ import "base:runtime"
 import win "core:sys/windows"
 import "core:strings"
 import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 
 window_size : [2]i32 = {1000, 300}
 
 LIST_ITEM_HEIGHT :: 25
+
+START_MENU_PORGRAMS_PATH :: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"
+PATH :: "\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs"
 
 default_applications := map[string]string{
     "Terminal" = "wt.exe",
@@ -219,6 +224,7 @@ wm_create :: proc(hwnd: win.HWND, lparam: win.LPARAM) -> win.LRESULT {
     set_state(hwnd, state)
     win.GetClientRect(hwnd, &state.rect)
 
+
     pos_y : i32 = 35
     for name, command in default_applications {
         rc := win.RECT{
@@ -236,6 +242,8 @@ wm_create :: proc(hwnd: win.HWND, lparam: win.LPARAM) -> win.LRESULT {
 
         pos_y += 25
     }
+
+    scan_system_start_menu(state)
 
     for &x in state.applications {
         append(&state.search_results, &x)
@@ -268,7 +276,6 @@ wm_paint :: proc(hwnd: win.HWND) -> win.LRESULT {
         .DT_WORDBREAK,
     )
 
-    fmt.println("draw: ", state.search_results)
     for item, idx in state.search_results {
         name: cstring16 = win.utf8_to_wstring(item.application_name)
 
@@ -329,4 +336,56 @@ shell_exec :: proc(hwnd: win.HWND, item: List_Item) {
 
     // close launcher after
     win.PostMessageA(hwnd, win.WM_CLOSE, 0, 0)
+}
+
+scan_system_start_menu :: proc(state: ^State) {
+    files, err := os.read_directory_by_path(START_MENU_PORGRAMS_PATH, 0, context.allocator)
+    if err != nil {
+        fmt.println(err)
+        return
+    }
+    defer delete(files)
+
+    for f in files {
+        if f.type == .Regular || filepath.ext(f.fullpath) == ".exe" || filepath.ext(f.fullpath) == ".lnk" {
+            item := List_Item{
+                application_name = filepath.stem(f.fullpath),
+                command = f.fullpath
+            }
+
+            append(&state.applications, item)
+        }
+    }
+
+
+    home_dir, home_dir_err := os.user_home_dir(context.allocator)
+    assert(home_dir_err == nil)
+
+    foo, _ := filepath.join({home_dir, PATH})
+    defer delete(foo)
+
+    scan_user_start_menu(state, foo)
+}
+
+// @todo
+scan_user_start_menu :: proc(state: ^State, path: string) {
+    more_files, more_files_error := os.read_directory_by_path(path, 0, context.allocator)
+    if more_files_error != nil {
+        fmt.println(more_files_error)
+        return
+    }
+    defer delete(more_files)
+
+    for f in more_files {
+        if f.type == .Directory {
+            scan_user_start_menu(state, f.fullpath)
+        } else if f.type == .Regular || filepath.ext(f.fullpath) == ".exe" || filepath.ext(f.fullpath) == ".lnk" {
+            item := List_Item{
+                application_name = filepath.stem(f.fullpath),
+                command = f.fullpath
+            }
+
+            append(&state.applications, item)
+        } 
+    }
 }
