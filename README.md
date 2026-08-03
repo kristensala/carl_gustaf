@@ -3,6 +3,7 @@
 ![Demo](./images/demo.gif)
 
 **NB! Done in one night, expect bugs**
+<br/>
 Since I've never worked with Win32 API I used these as references:
 - https://github.com/karl-zylinski/odin-win32-software-rendering
 - https://github.com/odin-lang/examples/blob/master/win32/game_of_life/game_of_life.odin
