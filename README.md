@@ -1,5 +1,6 @@
 # Carl Gustaf
 An application laucher for windows
+![Demo](./images/demo.gif)
 
 NB! Done in one day; expect bugs
 
