@@ -12,8 +12,8 @@ window_size : [2]i32 = {1000, 300}
 
 LIST_ITEM_HEIGHT :: 25
 
-START_MENU_PORGRAMS_PATH :: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"
-PATH :: "\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs"
+START_MENU_PORGRAMS_PATH :: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\*"
+PATH :: "\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\*"
 
 default_applications := map[string]string{
     "Terminal" = "wt.exe",
@@ -48,12 +48,19 @@ List_Item :: struct {
 }
 
 destroy_state :: proc(state: ^State) {
+    for a in state.applications {
+        delete(a.application_name)
+        delete(a.command)
+    }
+
     delete(state.applications)
     delete(state.search_results)
     state.search_phrase[0] = 0
 
     free(state)
 }
+
+run := true
 
 main :: proc() {
 	win.SetProcessDPIAware()
@@ -85,18 +92,61 @@ main :: proc() {
 		nil, nil, instance, state)
 	assert(hwnd != nil, "Window creation Failed")
 
+    pos_y : i32 = 35
+    for name, command in default_applications {
+        rc := win.RECT{
+            left = 0,
+            top = pos_y,
+            right = window_size.x,
+            bottom = pos_y + 20
+        }
+        list_item := List_Item{
+            rc,
+            name,
+            command
+        }
+        append(&state.applications, list_item)
+
+        pos_y += 25
+    }
 
     win.ShowWindow(hwnd, win.SW_SHOWDEFAULT)
     win.SetForegroundWindow(hwnd)
 	win.UpdateWindow(hwnd)
 
-    message: win.MSG
+    scan_test(state, START_MENU_PORGRAMS_PATH)
+
+    home_dir, home_dir_err := os.user_home_dir(context.allocator)
+    assert(home_dir_err == nil)
+
+    foo, _ := filepath.join({home_dir, PATH})
+    defer delete(foo)
+    scan_test(state, foo)
+
+    for &x in state.applications {
+        append(&state.search_results, &x)
+    }
+
+    msg: win.MSG
+    for run {
+        for win.PeekMessageW(&msg, nil, 0, 0, win.PM_REMOVE) {
+            if (msg.message == win.WM_QUIT) {
+                run = false
+                break
+            }
+
+            win.TranslateMessage(&msg)
+            win.DispatchMessageW(&msg)
+        }
+        free_all(context.temp_allocator)
+    }
+
+    /*message: win.MSG
     for win.GetMessageW(&message, nil, 0, 0) > 0 {
         win.TranslateMessage(&message)
         win.DispatchMessageW(&message)
 
-        free_all(context.temp_allocator)
-    }
+    }*/
 
     destroy_state(state)
 
@@ -227,30 +277,6 @@ wm_create :: proc(hwnd: win.HWND, lparam: win.LPARAM) -> win.LRESULT {
     win.GetClientRect(hwnd, &state.rect)
 
 
-    pos_y : i32 = 35
-    for name, command in default_applications {
-        rc := win.RECT{
-            left = 0,
-            top = pos_y,
-            right = window_size.x,
-            bottom = pos_y + 20
-        }
-        list_item := List_Item{
-            rc,
-            name,
-            command
-        }
-        append(&state.applications, list_item)
-
-        pos_y += 25
-    }
-
-    scan_system_start_menu(state)
-
-    for &x in state.applications {
-        append(&state.search_results, &x)
-    }
-
 
     return 0
 }
@@ -278,7 +304,8 @@ wm_paint :: proc(hwnd: win.HWND) -> win.LRESULT {
         .DT_WORDBREAK,
     )
 
-    for item, idx in state.search_results {
+    max := len(state.search_results) >= 10 ? 10 : len(state.search_results)
+    for item, idx in state.search_results[:max] {
         name: cstring16 = win.utf8_to_wstring(item.application_name)
 
         if state.selected_application_idx == i32(idx) {
@@ -340,54 +367,46 @@ shell_exec :: proc(hwnd: win.HWND, item: List_Item) {
     win.PostMessageA(hwnd, win.WM_CLOSE, 0, 0)
 }
 
-scan_system_start_menu :: proc(state: ^State) {
-    files, err := os.read_directory_by_path(START_MENU_PORGRAMS_PATH, 0, context.allocator)
-    if err != nil {
-        fmt.println(err)
+scan_test :: proc(state: ^State, path: string) {
+    data: win.WIN32_FIND_DATAW
+    cpath := win.utf8_to_wstring(path)
+    handle := win.FindFirstFileW(cpath, &data)
+
+    if handle == win.INVALID_HANDLE_VALUE {
+        fmt.eprintln("Could not open directory")
         return
     }
-    defer delete(files)
+    defer win.FindClose(handle)
 
-    for f in files {
-        if f.type == .Regular || filepath.ext(f.fullpath) == ".exe" || filepath.ext(f.fullpath) == ".lnk" {
-            item := List_Item{
-                application_name = filepath.stem(f.fullpath),
-                command = f.fullpath
+    for {
+        name, _ := win.utf16_to_utf8(data.cFileName[:])
+
+        // Windows includes these directory entries.
+        if name != "." && name != ".." {
+            is_directory :=
+                (data.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY) != 0
+
+            if is_directory {
+                directory_path := fmt.tprintf("%s%s\\*", path[:len(path) - 1], name)
+                //fmt.printf("[DIR]  %s\n", directory_path)
+                scan_test(state, directory_path)
+            } else {
+                file_path := fmt.aprintf("%s%s", path[:len(path) - 1], name)
+                //fmt.printf("[FILE] %s | %s\n", name, file_path)
+
+                item := List_Item{
+                    application_name = strings.clone(filepath.stem(name)),
+                    command = file_path
+                }
+
+                append(&state.applications, item)
             }
+        }
 
-            append(&state.applications, item)
+        if !win.FindNextFileW(handle, &data) {
+            break
         }
     }
 
-
-    home_dir, home_dir_err := os.user_home_dir(context.allocator)
-    assert(home_dir_err == nil)
-
-    foo, _ := filepath.join({home_dir, PATH})
-    defer delete(foo)
-
-    scan_user_start_menu(state, foo)
 }
 
-// @todo
-scan_user_start_menu :: proc(state: ^State, path: string) {
-    more_files, more_files_error := os.read_directory_by_path(path, 0, context.allocator)
-    if more_files_error != nil {
-        fmt.println(more_files_error)
-        return
-    }
-    defer delete(more_files)
-
-    for f in more_files {
-        if f.type == .Directory {
-            scan_user_start_menu(state, f.fullpath)
-        } else if f.type == .Regular || filepath.ext(f.fullpath) == ".exe" || filepath.ext(f.fullpath) == ".lnk" {
-            item := List_Item{
-                application_name = filepath.stem(f.fullpath),
-                command = f.fullpath
-            }
-
-            append(&state.applications, item)
-        } 
-    }
-}
