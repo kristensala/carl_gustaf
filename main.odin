@@ -114,14 +114,14 @@ main :: proc() {
     win.SetForegroundWindow(hwnd)
 	win.UpdateWindow(hwnd)
 
-    scan_test(state, START_MENU_PORGRAMS_PATH)
+    scan_for_applications(state, START_MENU_PORGRAMS_PATH)
 
     home_dir, home_dir_err := os.user_home_dir(context.allocator)
     assert(home_dir_err == nil)
 
     foo, _ := filepath.join({home_dir, PATH})
     defer delete(foo)
-    scan_test(state, foo)
+    scan_for_applications(state, foo)
 
     for &x in state.applications {
         append(&state.search_results, &x)
@@ -367,7 +367,7 @@ shell_exec :: proc(hwnd: win.HWND, item: List_Item) {
     win.PostMessageA(hwnd, win.WM_CLOSE, 0, 0)
 }
 
-scan_test :: proc(state: ^State, path: string) {
+scan_for_applications :: proc(state: ^State, path: string) {
     data: win.WIN32_FIND_DATAW
     cpath := win.utf8_to_wstring(path)
     handle := win.FindFirstFileW(cpath, &data)
@@ -389,7 +389,7 @@ scan_test :: proc(state: ^State, path: string) {
             if is_directory {
                 directory_path := fmt.tprintf("%s%s\\*", path[:len(path) - 1], name)
                 //fmt.printf("[DIR]  %s\n", directory_path)
-                scan_test(state, directory_path)
+                scan_for_applications(state, directory_path)
             } else {
                 file_path := fmt.aprintf("%s%s", path[:len(path) - 1], name)
                 //fmt.printf("[FILE] %s | %s\n", name, file_path)
