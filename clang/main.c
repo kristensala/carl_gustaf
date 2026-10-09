@@ -1,6 +1,9 @@
 #include "state.h"
 #include <windows.h>
 #include <stdio.h>
+#include <objbase.h>
+#include <string.h>
+#include <stdlib.h>
 #include "winapi.h"
 
 const char g_szClassName[] = "myWindowClass";
@@ -14,6 +17,19 @@ AppState g_app_state = {
     .application_count = 0,
     .application_capacity = 0
 };
+
+// example: https://mouri.moe/en/2021/11/07/Launch-Windows-Store-App-via-Win32-API/
+HRESULT launch_application(wchar_t* aumid) {
+    // https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iapplicationactivationmanager-activateapplication
+    /*
+       HRESULT ActivateApplication(
+       [in]  LPCWSTR         appUserModelId,
+       [in]  LPCWSTR         arguments,
+       [in]  ACTIVATEOPTIONS options,
+       [out] DWORD           *processId
+       );
+    */
+}
 
 void append_to_input(HWND hwnd, char key) {
     if (g_app_state.input_len < 50) {
@@ -31,8 +47,8 @@ void remove_from_input(HWND hwnd) {
     }
 }
 
+// @todo: scan start menu and other common places where application are installed
 void scan_system_for_applications() {
-    // @todo: cpp impl here plus scan common directories
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -78,7 +94,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetTextColor(hdc, RGB(0, 0, 0));
             SetBkMode(hdc, TRANSPARENT);
 
+            // input text
             DrawTextA(hdc, g_app_state.input, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+
+            // @todo draw application list
 
             EndPaint(hwnd, &ps);
 
@@ -121,6 +140,14 @@ int WINAPI WinMain(
         return 0;
     }
 
+    // @note(ksala): winrt::init_apartment() is triggered in C++ side and this here crashed the program
+    // maybe init and uninit here and remove from C++ side
+    /*HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(hr)) {
+        printf("CoInitializeEx failed\n");
+        return 1;
+    }*/
+
     hwnd = CreateWindowEx(
             WS_EX_CLIENTEDGE,
             g_szClassName,
@@ -137,26 +164,68 @@ int WINAPI WinMain(
 
     AppEntryList apps = {0};
 
-    int result = list_store_applications(&apps);
+    int result = list_store_applications(&apps); // copy to a state and then free
+    // @todo: remove later
     if (result == 0) {
+
+        g_app_state.applications = calloc(apps.count, sizeof(Application));
+
         for (size_t i = 0; i < apps.count; ++i) {
-            printf("%ls\n", apps.items[i].display_name);
+            //printf("%s\n", apps.items[i].app_user_model_id);
+            Application application = {
+                .name = NULL,
+                .path_to_exe = NULL,
+                .is_store_application = 1,
+                .aumid = NULL
+            };
+
+            size_t len = strlen(apps.items[i].display_name);
+            application.name = malloc(len + 1);
+            if (application.name != NULL) {
+                strcpy(application.name, apps.items[i].display_name);
+            }
+
+            if (apps.items[i].app_user_model_id != NULL) {
+                size_t aumid_len = strlen(apps.items[i].app_user_model_id);
+                application.aumid = malloc(aumid_len + 1);
+                if (application.aumid != NULL) {
+                    strcpy(application.aumid, apps.items[i].app_user_model_id);
+                }
+            }
+
+            g_app_state.applications[i] = application;
+            g_app_state.application_count++;
+
+            printf("%s: ", application.name);
+            printf("%s\n", application.aumid);
         }
-    } else {
+
         free_store_applications(&apps);
     }
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-
     while (GetMessage(&Msg, NULL, 0, 0) > 0) {
         TranslateMessage(&Msg);
         DispatchMessage(&Msg);
     }
 
-    free_store_applications(&apps);
-    
+    cleanup:
+        //CoUninitialize();
+        free_store_applications(&apps);
+
+        for (size_t i = 0; i < g_app_state.application_count; ++i) {
+            free(g_app_state.applications[i].name);
+            g_app_state.applications[i].name = NULL;
+
+            free(g_app_state.applications[i].aumid);
+            g_app_state.applications[i].aumid = NULL;
+        }
+
+        free(g_app_state.applications);
+        g_app_state.applications = NULL;
+        g_app_state.application_count = 0;
 
     return Msg.wParam;
 }
