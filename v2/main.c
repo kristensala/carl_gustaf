@@ -171,7 +171,6 @@ int WINAPI WinMain(
         g_app_state.applications = calloc(apps.count, sizeof(Application));
 
         for (size_t i = 0; i < apps.count; ++i) {
-            //printf("%s\n", apps.items[i].app_user_model_id);
             Application application = {
                 .name = NULL,
                 .path_to_exe = NULL,
@@ -193,7 +192,7 @@ int WINAPI WinMain(
                 }
             }
 
-            g_app_state.applications[i] = application;
+            g_app_state.applications[g_app_state.application_count] = application;
             g_app_state.application_count++;
 
             printf("%s: ", application.name);
