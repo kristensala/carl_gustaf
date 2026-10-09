@@ -29,13 +29,6 @@ extern "C" int list_store_applications(AppEntryList* result) {
         std::vector<AppEntryInfo> applications;
 
         for (auto const& package : manager.FindPackagesForUser(L"")) {
-            /*auto display_name = package.DisplayName();
-             
-            const wchar_t* source = display_name.c_str();
-            auto* copy = new wchar_t[display_name.size() + 1];
-            std::wmemcpy(copy, source, display_name.size());
-            copy[display_name.size()] = L'\0';
-
             AppEntryInfo app_info{NULL, copy, NULL};*/
 
             std::string utf8 = winrt::to_string(package.DisplayName());
@@ -60,19 +53,11 @@ extern "C" int list_store_applications(AppEntryList* result) {
 
                 app_info.app_user_model_id = t;
 
-                /*winrt::hstring aumid = entry.AppUserModelId();
-                const wchar_t* src = aumid.c_str();
-                auto* aumid_copy = new wchar_t[aumid.size() + 1];
-                std::wmemcpy(aumid_copy, src, aumid.size());
-                aumid_copy[aumid.size()] = L'\0';*/
-
-
                 break;
             }
             applications.push_back(app_info);
         }
 
-        // this needs to be deleted later
         auto* data = new AppEntryInfo[applications.size()]{};
         std::copy(applications.begin(), applications.end(), data);
 
@@ -97,7 +82,6 @@ extern "C" void free_store_applications(AppEntryList* list) {
     }
 
     for (size_t i = 0; i < list->count; ++i) {
-        //delete list->items[i].entry;
         std::free(list->items[i].display_name);
         std::free(list->items[i].app_user_model_id);
     }
