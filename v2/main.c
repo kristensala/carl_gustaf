@@ -4,18 +4,23 @@
 #include <objbase.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
+#include <ctype.h>
 #include "winapi.h"
 
 const char g_szClassName[] = "myWindowClass";
 
 const int WindowWidth = 1000;
+const int WindowHeight = 300;
 
 AppState g_app_state = {
     .input = {0},
     .input_len = 0,
     .applications = NULL,
     .application_count = 0,
-    .application_capacity = 0
+    .application_capacity = 0,
+    .search_results = {0},
+    .search_results_count = 0
 };
 
 // example: https://mouri.moe/en/2021/11/07/Launch-Windows-Store-App-via-Win32-API/
@@ -29,6 +34,35 @@ HRESULT launch_application(wchar_t* aumid) {
        [out] DWORD           *processId
        );
     */
+}
+
+/*
+ * Allocates memory. Pair with free
+ */
+char *clone_string(const char *str) {
+    assert(str != NULL);
+
+    size_t len = strlen(str); // strlen() does not include '\0'
+    char *copy = malloc(len + 1);
+
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    strcpy(copy, str); // str does include '\0'
+    return copy;
+}
+
+// Allocates memory
+char *string_to_lower(const char *str) {
+    char *str_clone = clone_string(str);
+    assert(str_clone != NULL);
+
+    for (size_t i = 0; str_clone[i] != '\0'; ++i) {
+        str_clone[i] = (char)tolower((unsigned char)str_clone[i]);
+    }
+
+    return str_clone;
 }
 
 void append_to_input(HWND hwnd, char key) {
@@ -51,6 +85,38 @@ void remove_from_input(HWND hwnd) {
 void scan_system_for_applications() {
 }
 
+// @todo
+void draw_application_list(HDC hdc) {
+    int pos_y = 20;
+    for (size_t i = 0; i < g_app_state.application_count; ++i) {
+        Application app = g_app_state.applications[i];
+
+        RECT rect = {5, pos_y, WindowWidth, pos_y + 20};
+        DrawTextA(hdc, app.name, strlen(app.name), &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+
+        pos_y += 20;
+
+        if (pos_y > WindowHeight) {
+            break;
+        }
+
+    }
+}
+
+
+// @todo
+void update_search_results() {
+    g_app_state.search_results_count = 0;
+
+    for (size_t i = 0; i < g_app_state.application_count; ++i) {
+        Application *app = &g_app_state.applications[i];
+
+        if (strstr(app->name, g_app_state.input) != NULL) {
+            g_app_state.search_results[g_app_state.search_results_count++] = app;
+        }
+    }
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch(msg) {
         case WM_CLOSE:
@@ -63,7 +129,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                           // @todo: CreateCaret api
             return 0;
         case WM_CHAR:
-            char c = (WCHAR) wParam;
+            char c = (WCHAR)wParam;
             if (c == 8) { // Backspace
                 remove_from_input(hwnd);
             } else {
@@ -88,6 +154,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             RECT rect;
             GetClientRect(hwnd, &rect);
 
+            //RECT search_results_rect = {}; // Invalidate this on search update
+
             rect.top += 5;
             rect.left += 5;
 
@@ -98,6 +166,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             DrawTextA(hdc, g_app_state.input, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
             // @todo draw application list
+            draw_application_list(hdc);
 
             EndPaint(hwnd, &ps);
 
@@ -107,6 +176,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     return 0;
 }
+
 
 int WINAPI WinMain(
         HINSTANCE hInstance,
@@ -153,7 +223,7 @@ int WINAPI WinMain(
             g_szClassName,
             NULL,
             WS_POPUPWINDOW,
-            CW_USEDEFAULT, CW_USEDEFAULT, WindowWidth, 300,
+            CW_USEDEFAULT, CW_USEDEFAULT, WindowWidth, WindowHeight,
             NULL, NULL, hInstance, NULL);
 
     if (hwnd == NULL) {
@@ -164,10 +234,11 @@ int WINAPI WinMain(
 
     AppEntryList apps = {0};
 
-    int result = list_store_applications(&apps); // copy to a state and then free
-    // @todo: remove later
-    if (result == 0) {
+    // @todo: set the search_results_rect
+    //search_results_rect = {0, 30, WindowWidth, WindowHeight - 30};
 
+    int result = list_store_applications(&apps); // copy to a state and then free
+    if (result == 0) {
         g_app_state.applications = calloc(apps.count, sizeof(Application));
 
         for (size_t i = 0; i < apps.count; ++i) {
@@ -195,8 +266,8 @@ int WINAPI WinMain(
             g_app_state.applications[g_app_state.application_count] = application;
             g_app_state.application_count++;
 
-            printf("%s: ", application.name);
-            printf("%s\n", application.aumid);
+            /*printf("%s: ", application.name);
+            printf("%s\n", application.aumid);*/
         }
 
         free_store_applications(&apps);

@@ -21,6 +21,9 @@ typedef struct {
     Application *applications;
     size_t application_count;
     size_t application_capacity;
+
+    Application *search_results[50];
+    size_t search_results_count;
 } AppState;
 
 typedef struct {
@@ -30,6 +33,7 @@ typedef struct {
 } Gui;
 
 extern AppState g_app_state;
+extern RECT search_results_rect;
 
 void add_application(char *name, char *exec_path);
 void free_app_state(void);
