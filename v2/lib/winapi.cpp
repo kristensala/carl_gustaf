@@ -11,6 +11,7 @@
 
 #include "winapi.h"
 
+// @todo: no need for this anymore
 struct AppEntryImpl {
     winrt::Windows::ApplicationModel::Core::AppListEntry entry;
 };
@@ -28,9 +29,14 @@ extern "C" int list_store_applications(AppEntryList* result) {
 
         std::vector<AppEntryInfo> applications;
 
+        // Package: https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.package?view=winrt-28000
+        // package.InstalledDate(): DateTime
+        //
+        // @note(ksala):
+        //    package has package.InstalledDate()
+        //    can use to update index file if using the index file
+        //    get the latest date and use that to compare against the index file updated date
         for (auto const& package : manager.FindPackagesForUser(L"")) {
-            AppEntryInfo app_info{NULL, copy, NULL};*/
-
             std::string utf8 = winrt::to_string(package.DisplayName());
 
             char *text = static_cast<char *>(std::malloc(utf8.size() + 1));
