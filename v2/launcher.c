@@ -86,7 +86,19 @@ void remove_from_input(HWND hwnd) {
 }
 
 // @todo: scan start menu and other common places where application are installed
+// win32 example: https://learn.microsoft.com/en-us/windows/win32/fileio/listing-the-files-in-a-directory
 void scan_system_for_applications() {
+    WIN32_FIND_DATA file_data;
+    HANDLE search_handle = FindFirstFileW("todo", &file_data);
+
+    if (h_find == INVALID_HANDLE_VALUE) {
+        printf("Failed to read dir\n");
+        return;
+    }
+
+    do {
+        // @todo
+    } while (FindNextFileW(search_handle, &file_data))
 }
 
 void draw_application_list(HDC hdc) {
