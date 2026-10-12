@@ -22,6 +22,9 @@ typedef struct {
     size_t application_count;
     size_t application_capacity;
 
+    Application *selected_application;
+    int selected_application_idx;
+
     Application *search_results[50];
     size_t search_results_count;
 } AppState;

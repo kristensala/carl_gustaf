@@ -13,6 +13,8 @@ const char g_szClassName[] = "myWindowClass";
 const int WindowWidth = 1000;
 const int WindowHeight = 300;
 
+static HBRUSH blue_brush = NULL;
+
 AppState g_app_state = {
     .input = {0},
     .input_len = 0,
@@ -20,7 +22,9 @@ AppState g_app_state = {
     .application_count = 0,
     .application_capacity = 0,
     .search_results = NULL,
-    .search_results_count = 0
+    .search_results_count = 0,
+    .selected_application = NULL,
+    .selected_application_idx = 0
 };
 
 // example: https://mouri.moe/en/2021/11/07/Launch-Windows-Store-App-via-Win32-API/
@@ -88,22 +92,29 @@ void scan_system_for_applications() {
 // @todo
 void draw_application_list(HDC hdc) {
     int pos_y = 20;
+    blue_brush = CreateSolidBrush(RGB(0, 0, 255));
+
     for (size_t i = 0; i < g_app_state.search_results_count; ++i) {
         Application *app = g_app_state.search_results[i];
 
         RECT rect = {5, pos_y, WindowWidth, pos_y + 20};
+
+        if (i == g_app_state.selected_application_idx) {
+            FillRect(hdc, &rect, blue_brush);
+        }
+
         DrawTextA(hdc, app->name, strlen(app->name), &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
         pos_y += 20;
 
-        if (pos_y > WindowHeight) {
+        if (pos_y > WindowHeight - 20) {
             break;
         }
-
     }
+
+    DeleteObject(blue_brush);
 }
 
-// @todo
 void update_search_results() {
     g_app_state.search_results_count = 0;
 
@@ -120,15 +131,25 @@ void update_search_results() {
         free(app_name_lower);
     }
 
+    if (g_app_state.search_results_count > 0) {
+        g_app_state.selected_application = g_app_state.search_results[0];
+        g_app_state.selected_application_idx = 0;
+    }
+
     free(input_lower);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch(msg) {
+        case WM_CREATE:
+            blue_brush = CreateSolidBrush(RGB(0, 0, 255));
+        break;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             break;
         case WM_DESTROY:
+            DeleteObject(blue_brush);
+            blue_brush = NULL;
             PostQuitMessage(0);
             break;
         case WM_SETFOCUS: // and KILLFOCUS should destroy the caret
@@ -151,6 +172,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_KEYDOWN: 
             if (wParam == VK_ESCAPE) {
                 PostMessageA(hwnd, WM_CLOSE, 0, 0);
+            }
+            if (wParam == VK_UP) {
+                if (g_app_state.selected_application_idx > 0) {
+                    g_app_state.selected_application_idx--;
+                    InvalidateRect(hwnd, NULL, true);
+                }
+            }
+            if (wParam == VK_DOWN) {
+                if (g_app_state.selected_application_idx < g_app_state.search_results_count) {
+                    g_app_state.selected_application_idx++;
+                    InvalidateRect(hwnd, NULL, true);
+                }
             }
             return 0;
         case WM_PAINT:
