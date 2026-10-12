@@ -89,9 +89,10 @@ void remove_from_input(HWND hwnd) {
 void scan_system_for_applications() {
 }
 
-// @todo
 void draw_application_list(HDC hdc) {
-    int pos_y = 20;
+    int pos_y = 25;
+    
+    // @todo: find a better way
     blue_brush = CreateSolidBrush(RGB(0, 0, 255));
 
     for (size_t i = 0; i < g_app_state.search_results_count; ++i) {
@@ -157,9 +158,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         case WM_CHAR:
             char c = (WCHAR)wParam;
+
             if (c == 8) { // Backspace
                 remove_from_input(hwnd);
-            } else {
+            } else if ((int)wParam >= 32) {
                 append_to_input(hwnd, c);
             }
 
@@ -172,18 +174,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_KEYDOWN: 
             if (wParam == VK_ESCAPE) {
                 PostMessageA(hwnd, WM_CLOSE, 0, 0);
+                return 0;
             }
             if (wParam == VK_UP) {
                 if (g_app_state.selected_application_idx > 0) {
                     g_app_state.selected_application_idx--;
                     InvalidateRect(hwnd, NULL, true);
                 }
+                return 0;
             }
             if (wParam == VK_DOWN) {
                 if (g_app_state.selected_application_idx < g_app_state.search_results_count) {
                     g_app_state.selected_application_idx++;
                     InvalidateRect(hwnd, NULL, true);
                 }
+                return 0;
+            }
+
+            if (wParam == VK_RETURN) {
+                // @todo: launch the selected application
             }
             return 0;
         case WM_PAINT:
