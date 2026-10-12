@@ -19,7 +19,7 @@ AppState g_app_state = {
     .applications = NULL,
     .application_count = 0,
     .application_capacity = 0,
-    .search_results = {0},
+    .search_results = NULL,
     .search_results_count = 0
 };
 
@@ -88,11 +88,11 @@ void scan_system_for_applications() {
 // @todo
 void draw_application_list(HDC hdc) {
     int pos_y = 20;
-    for (size_t i = 0; i < g_app_state.application_count; ++i) {
-        Application app = g_app_state.applications[i];
+    for (size_t i = 0; i < g_app_state.search_results_count; ++i) {
+        Application *app = g_app_state.search_results[i];
 
         RECT rect = {5, pos_y, WindowWidth, pos_y + 20};
-        DrawTextA(hdc, app.name, strlen(app.name), &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+        DrawTextA(hdc, app->name, strlen(app->name), &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
         pos_y += 20;
 
@@ -103,18 +103,24 @@ void draw_application_list(HDC hdc) {
     }
 }
 
-
 // @todo
 void update_search_results() {
     g_app_state.search_results_count = 0;
 
+    char *input_lower = string_to_lower(g_app_state.input);
     for (size_t i = 0; i < g_app_state.application_count; ++i) {
         Application *app = &g_app_state.applications[i];
 
-        if (strstr(app->name, g_app_state.input) != NULL) {
+        char *app_name_lower = string_to_lower(app->name);
+
+        if (strstr(app_name_lower, input_lower) != NULL) {
             g_app_state.search_results[g_app_state.search_results_count++] = app;
         }
+
+        free(app_name_lower);
     }
+
+    free(input_lower);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -135,6 +141,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             } else {
                 append_to_input(hwnd, c);
             }
+
+            // @todo: update search results
+            update_search_results();
 
             // Force redraw
             InvalidateRect(hwnd, NULL, true);
