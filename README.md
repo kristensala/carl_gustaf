@@ -1,5 +1,7 @@
 # Carl Gustaf
 ## An application laucher for windows
+**Currently rewriting in C**
+
 ![Demo](./images/demo.gif)
 
 **NB! Done in one night, expect bugs**
