@@ -1,4 +1,4 @@
-#include "state.h"
+#include "launcher.h"
 #include <windows.h>
 #include <stdio.h>
 #include <objbase.h>
@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <ctype.h>
-#include "winapi.h"
+#include "winlib.h"
 
 const char g_szClassName[] = "myWindowClass";
 

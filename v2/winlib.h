@@ -4,13 +4,13 @@
 #include <wchar.h>
 
 #ifdef _WIN32
-  #ifdef WINAPI_BUILD
-    #define WINAPI_API __declspec(dllexport)
+  #ifdef WINLIB_BUILD
+    #define WINLIB __declspec(dllexport)
   #else
-    #define WINAPI_API __declspec(dllimport)
+    #define WINLIB __declspec(dllimport)
   #endif
 #else
-  #define WINAPI_API
+  #define WINLIB
 #endif
 
 #ifdef __cplusplus
@@ -33,9 +33,9 @@ typedef struct {
     size_t count;
 } AppEntryList;
 
-WINAPI_API int list_store_applications(AppEntryList* result);
-WINAPI_API void free_store_applications(AppEntryList* data);
-WINAPI_API int launch_entry(AppEntry entry); // no need 
+WINLIB int list_store_applications(AppEntryList* result);
+WINLIB void free_store_applications(AppEntryList* data);
+WINLIB int launch_entry(AppEntry entry); // no need 
 
 #ifdef __cplusplus
 }

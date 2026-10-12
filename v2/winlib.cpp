@@ -9,7 +9,7 @@
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include <winrt/Windows.Management.Deployment.h>
 
-#include "winapi.h"
+#include "winlib.h"
 
 // @todo: no need for this anymore
 struct AppEntryImpl {

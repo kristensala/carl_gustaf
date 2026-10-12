@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 #include <windows.h>
-#include "winapi.h"
+#include "winlib.h"
 
 typedef struct {
     char *name;
