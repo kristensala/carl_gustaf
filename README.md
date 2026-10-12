@@ -1,6 +1,6 @@
 # Carl Gustaf
 ## An application laucher for windows
-**Currently rewriting in C**
+**=====> NB! Currently rewriting in C <=====**
 
 ![Demo](./images/demo.gif)
 
