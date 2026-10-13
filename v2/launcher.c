@@ -14,8 +14,6 @@ const char g_szClassName[] = "myWindowClass";
 const int WindowWidth = 1000;
 const int WindowHeight = 300;
 
-static HBRUSH blue_brush = NULL;
-
 AppState g_app_state = {
     .input = {0},
     .input_len = 0,
@@ -51,6 +49,7 @@ void append_to_input(char key) {
     }
 }
 
+// pop
 void remove_from_input() {
     if (g_app_state.input_len > 0) {
         g_app_state.input_len--;
@@ -81,7 +80,8 @@ void draw_application_list(HDC hdc) {
     int pos_y = 25;
     
     // @todo: find a better way
-    blue_brush = CreateSolidBrush(RGB(0, 0, 255));
+    // create once and Delete on application exit
+    HBRUSH blue_brush = CreateSolidBrush(RGB(0, 0, 255));
 
     for (size_t i = 0; i < g_app_state.search_results_count; ++i) {
         Application *app = g_app_state.search_results[i];
@@ -131,14 +131,11 @@ void update_search_results() {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch(msg) {
         case WM_CREATE:
-            blue_brush = CreateSolidBrush(RGB(0, 0, 255));
         break;
         case WM_CLOSE:
             DestroyWindow(hwnd);
             break;
         case WM_DESTROY:
-            DeleteObject(blue_brush);
-            blue_brush = NULL;
             PostQuitMessage(0);
             break;
         case WM_SETFOCUS: // and KILLFOCUS should destroy the caret
@@ -146,18 +143,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         case WM_CHAR:
             char c = (WCHAR)wParam;
+            int should_update_search = 0;
 
             if (c == 8) { // Backspace
                 remove_from_input();
+                should_update_search = 1;
             } else if ((int)wParam >= 32) {
                 append_to_input(c);
+                should_update_search = 1;
             }
 
-            // @todo: update search results
-            update_search_results();
+            if (should_update_search) {
+                update_search_results();
 
-            // Force redraw
-            InvalidateRect(hwnd, NULL, true);
+                // Force redraw
+                InvalidateRect(hwnd, NULL, true);
+            }
+
             return 0;
         case WM_KEYDOWN: 
             if (wParam == VK_ESCAPE) {
