@@ -1,5 +1,5 @@
-#ifndef APP_STATE_H
-#define APP_STATE_H
+#ifndef LAUNCHER_H
+#define LAUNCHER_H
 
 #include <stddef.h>
 #include <windows.h>
@@ -24,6 +24,7 @@ typedef struct {
 
     Application *selected_application;
     int selected_application_idx;
+    //int current_page;
 
     Application *search_results[50];
     size_t search_results_count;
