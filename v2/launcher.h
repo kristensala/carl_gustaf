@@ -40,6 +40,6 @@ extern RECT search_results_rect;
 
 void add_application(char *name, char *exec_path);
 void free_app_state(void);
-void append_to_input(HWND hwnd, char key);
+void append_to_input(char key);
 
 #endif

@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include "winlib.h"
+#include "tinkers.h"
 
 const char g_szClassName[] = "myWindowClass";
 
@@ -28,7 +29,8 @@ AppState g_app_state = {
 };
 
 // example: https://mouri.moe/en/2021/11/07/Launch-Windows-Store-App-via-Win32-API/
-HRESULT launch_application(wchar_t* aumid) {
+// if has AUMID use that to launch the application else just execute the executable
+HRESULT launch_application(Application *app) {
     // https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iapplicationactivationmanager-activateapplication
     /*
        HRESULT ActivateApplication(
@@ -40,36 +42,7 @@ HRESULT launch_application(wchar_t* aumid) {
     */
 }
 
-/*
- * Allocates memory. Pair with free
- */
-char *clone_string(const char *str) {
-    assert(str != NULL);
-
-    size_t len = strlen(str); // strlen() does not include '\0'
-    char *copy = malloc(len + 1);
-
-    if (copy == NULL) {
-        return NULL;
-    }
-
-    strcpy(copy, str); // str does include '\0'
-    return copy;
-}
-
-// Allocates memory
-char *string_to_lower(const char *str) {
-    char *str_clone = clone_string(str);
-    assert(str_clone != NULL);
-
-    for (size_t i = 0; str_clone[i] != '\0'; ++i) {
-        str_clone[i] = (char)tolower((unsigned char)str_clone[i]);
-    }
-
-    return str_clone;
-}
-
-void append_to_input(HWND hwnd, char key) {
+void append_to_input(char key) {
     if (g_app_state.input_len < 50) {
         g_app_state.input[g_app_state.input_len] = key;
         g_app_state.input_len++;
@@ -78,7 +51,7 @@ void append_to_input(HWND hwnd, char key) {
     }
 }
 
-void remove_from_input(HWND hwnd) {
+void remove_from_input() {
     if (g_app_state.input_len > 0) {
         g_app_state.input_len--;
         g_app_state.input[g_app_state.input_len] = '\0';
@@ -87,8 +60,11 @@ void remove_from_input(HWND hwnd) {
 
 // @todo: scan start menu and other common places where application are installed
 // win32 example: https://learn.microsoft.com/en-us/windows/win32/fileio/listing-the-files-in-a-directory
+//
+// START_MENU_PORGRAMS_PATH :: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\*"
+// PATH :: "\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\*"
 void scan_system_for_applications() {
-    WIN32_FIND_DATA file_data;
+    /*WIN32_FIND_DATA file_data;
     HANDLE search_handle = FindFirstFileW("todo", &file_data);
 
     if (h_find == INVALID_HANDLE_VALUE) {
@@ -98,7 +74,7 @@ void scan_system_for_applications() {
 
     do {
         // @todo
-    } while (FindNextFileW(search_handle, &file_data))
+    } while (FindNextFileW(search_handle, &file_data));*/
 }
 
 void draw_application_list(HDC hdc) {
@@ -172,9 +148,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             char c = (WCHAR)wParam;
 
             if (c == 8) { // Backspace
-                remove_from_input(hwnd);
+                remove_from_input();
             } else if ((int)wParam >= 32) {
-                append_to_input(hwnd, c);
+                append_to_input(c);
             }
 
             // @todo: update search results
