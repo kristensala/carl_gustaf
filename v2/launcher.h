@@ -1,9 +1,19 @@
 #ifndef LAUNCHER_H
 #define LAUNCHER_H
 
+#define Megabytes(Value) ((Value)*1024*1024)
+
 #include <stddef.h>
 #include <windows.h>
 #include "winlib.h"
+#include <wchar.h>
+
+// [[ ref: https://www.youtube.com/watch?v=tcENxzeTjbI ]]
+typedef struct {
+    int is_initialized;
+    int permanent_storage_size; // MB
+    void *permanent_storage;
+} LauncherMemory;
 
 typedef struct {
     char *name;
@@ -11,7 +21,7 @@ typedef struct {
 
     /* if store application use aumid else use path_to_exe*/
     int is_store_application;
-    char *aumid;
+    wchar_t *aumid;
 } Application;
 
 typedef struct {

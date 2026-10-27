@@ -7,7 +7,8 @@
 #include <assert.h>
 #include <ctype.h>
 #include "winlib.h"
-#include "tinkers.h"
+#include "ks.h"
+#include <shobjidl.h>
 
 const char g_szClassName[] = "myWindowClass";
 
@@ -28,18 +29,94 @@ AppState g_app_state = {
 
 // example: https://mouri.moe/en/2021/11/07/Launch-Windows-Store-App-via-Win32-API/
 // if has AUMID use that to launch the application else just execute the executable
-HRESULT launch_application(Application *app) {
-    // https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-iapplicationactivationmanager-activateapplication
-    /*
-       HRESULT ActivateApplication(
-       [in]  LPCWSTR         appUserModelId,
-       [in]  LPCWSTR         arguments,
-       [in]  ACTIVATEOPTIONS options,
-       [out] DWORD           *processId
-       );
-    */
+int launch_win_store_application(wchar_t *aumid) {
+    // @note(ksala): winrt::init_apartment() is triggered in C++ side and this here crashed the program
+    // maybe init and uninit here and remove from C++ side
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(hr)) {
+        printf("CoInitializeEx failed\n");
+        return 1;
+    }
+
+    // https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-iapplicationactivationmanager
+    IApplicationActivationManager *application_activation_manager = NULL;
+    hr = CoCreateInstance(
+        &CLSID_ApplicationActivationManager,
+        NULL,
+        CLSCTX_LOCAL_SERVER,
+        &IID_IApplicationActivationManager,
+        (void **)&application_activation_manager
+    );
+
+    DWORD process_id = 0;
+    if (SUCCEEDED(hr)) {
+        hr = application_activation_manager->lpVtbl->ActivateApplication(
+            application_activation_manager,
+            aumid,
+            L"",
+            AO_NONE,
+            &process_id
+        );
+
+        // @note(ksala): lpVtbl is a table containing interface functions
+        application_activation_manager->lpVtbl->Release(application_activation_manager);
+
+        // @todo: close application
+    } else {
+        printf("failed to launch the application\n");
+        CoUninitialize();
+        return 1;
+    }
+
+    CoUninitialize();
+    return 0;
 }
 
+Application *get_selected_application() {
+    return g_app_state.selected_application = g_app_state.search_results[g_app_state.selected_application_idx];
+}
+
+int write_application_cache() {
+    // @todo
+    FILE *file = fopen("launcher.storecache", "w");
+    if (file == NULL) {
+        perror("Could not open file");
+        return EXIT_FAILURE;
+    }
+
+    char date[32];
+    char *updated_at = ks_current_date(date, sizeof date, NULL);
+    fprintf(file, "%s\n", updated_at);
+
+    for (int i = 0; i < g_app_state.application_count; i++) {
+        Application app = g_app_state.applications[i];
+
+        int write_result = fprintf(file, "%s:%ls\n", app.name, app.aumid);
+        if (write_result < 0) {
+            fprintf(stderr, "Write failed\n");
+            fclose(file);
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (fclose(file) == EOF) {
+        fprintf(stderr, "Close failed\n");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int read_from_application_cache() {
+    // @todo
+}
+
+int launch_regular_application() {
+    // @todo:
+    return 0;
+}
+
+// @todo: add input and buffer size as params
 void append_to_input(char key) {
     if (g_app_state.input_len < 50) {
         g_app_state.input[g_app_state.input_len] = key;
@@ -107,11 +184,11 @@ void draw_application_list(HDC hdc) {
 void update_search_results() {
     g_app_state.search_results_count = 0;
 
-    char *input_lower = string_to_lower(g_app_state.input);
+    char *input_lower = ks_string_to_lower(g_app_state.input);
     for (size_t i = 0; i < g_app_state.application_count; ++i) {
         Application *app = &g_app_state.applications[i];
 
-        char *app_name_lower = string_to_lower(app->name);
+        char *app_name_lower = ks_string_to_lower(app->name);
 
         if (strstr(app_name_lower, input_lower) != NULL) {
             g_app_state.search_results[g_app_state.search_results_count++] = app;
@@ -121,7 +198,7 @@ void update_search_results() {
     }
 
     if (g_app_state.search_results_count > 0) {
-        g_app_state.selected_application = g_app_state.search_results[0];
+        //g_app_state.selected_application = g_app_state.search_results[0];
         g_app_state.selected_application_idx = 0;
     }
 
@@ -182,7 +259,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
 
             if (wParam == VK_RETURN) {
-                // @todo: launch the selected application
+                Application *selected_app = get_selected_application();
+                if (selected_app != NULL) {
+                    int result = launch_win_store_application(selected_app->aumid);
+                    if (result == 0) {
+                        PostMessageA(hwnd, WM_CLOSE, 0, 0);
+                        return 0;
+                    }
+                }
             }
             return 0;
         case WM_PAINT:
@@ -195,8 +279,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             RECT rect;
             GetClientRect(hwnd, &rect);
 
-            //RECT search_results_rect = {}; // Invalidate this on search update
-
             rect.top += 5;
             rect.left += 5;
 
@@ -206,7 +288,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // input text
             DrawTextA(hdc, g_app_state.input, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
-            // @todo draw application list
             draw_application_list(hdc);
 
             EndPaint(hwnd, &ps);
@@ -217,7 +298,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     return 0;
 }
-
 
 int WINAPI WinMain(
         HINSTANCE hInstance,
@@ -251,13 +331,6 @@ int WINAPI WinMain(
         return 0;
     }
 
-    // @note(ksala): winrt::init_apartment() is triggered in C++ side and this here crashed the program
-    // maybe init and uninit here and remove from C++ side
-    /*HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-    if (FAILED(hr)) {
-        printf("CoInitializeEx failed\n");
-        return 1;
-    }*/
 
     hwnd = CreateWindowEx(
             WS_EX_CLIENTEDGE,
@@ -275,8 +348,6 @@ int WINAPI WinMain(
 
     AppEntryList apps = {0};
 
-    // @todo: set the search_results_rect
-    //search_results_rect = {0, 30, WindowWidth, WindowHeight - 30};
 
     int result = list_store_applications(&apps); // copy to a state and then free
     if (result == 0) {
@@ -290,28 +361,23 @@ int WINAPI WinMain(
                 .aumid = NULL
             };
 
-            size_t len = strlen(apps.items[i].display_name);
-            application.name = malloc(len + 1);
-            if (application.name != NULL) {
-                strcpy(application.name, apps.items[i].display_name);
-            }
 
             if (apps.items[i].app_user_model_id != NULL) {
-                size_t aumid_len = strlen(apps.items[i].app_user_model_id);
-                application.aumid = malloc(aumid_len + 1);
-                if (application.aumid != NULL) {
-                    strcpy(application.aumid, apps.items[i].app_user_model_id);
+                application.aumid = ks_char_to_wide(apps.items[i].app_user_model_id);
+
+                size_t len = strlen(apps.items[i].display_name);
+                application.name = malloc(len + 1);
+                if (application.name != NULL) {
+                    strcpy(application.name, apps.items[i].display_name);
                 }
+
+                g_app_state.applications[g_app_state.application_count] = application;
+                g_app_state.application_count++;
             }
-
-            g_app_state.applications[g_app_state.application_count] = application;
-            g_app_state.application_count++;
-
-            /*printf("%s: ", application.name);
-            printf("%s\n", application.aumid);*/
         }
 
         free_store_applications(&apps);
+        write_application_cache();
     }
 
     ShowWindow(hwnd, nCmdShow);
@@ -323,7 +389,6 @@ int WINAPI WinMain(
     }
 
     cleanup:
-        //CoUninitialize();
         free_store_applications(&apps);
 
         for (size_t i = 0; i < g_app_state.application_count; ++i) {
