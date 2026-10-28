@@ -6,7 +6,7 @@
  * Lib for common C stuff so I don't have to rewrite them
  *
  * - Functions
- *    char **ks_split_string_to_array(char *str, char *delimiter, size_t size);
+ *    size_t ks_split_string_to_array(char ***buffer, size_t *size, char *str, char *delim);
  *    char *ks_current_date(chat *buffer, size_t buffer_size, char *format);
  *    wchar_t *ks_char_to_wide(char *input);
  *    char *ks_clone_string(const char *str);
@@ -19,25 +19,48 @@
 
 #include <string.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
 #include <time.h>
 
-char **ks_split_string_to_array(char *str, char *delimiter, size_t size) {
-    char **array = malloc(sizeof(char *) * size);
-    size_t count = 0;
+size_t ks_split_string_to_array(char ***buffer, size_t *size, char *str, char *delim) {
+    size_t len = 0;
 
-    char *token = strtok(str, delimiter);
-    array[count] = token;
-    count++;
-
-    while (token != NULL) {
-        token = strtok(NULL, delimiter);
-        array[count] = token;
-        count++;
+    if (*size == 0) {
+        return 0;
     }
 
-    return array;
+    char *token = strtok(str, delim);
+    if (token == NULL) {
+        return 0;
+    }
+
+    (*buffer)[len] = token;
+    len++;
+
+    while ((token = strtok(NULL, delim)) != NULL) {
+        if (len == *size) {
+            if (*size > SIZE_MAX / sizeof **buffer / 2) {
+                return 0;
+            }
+
+            size_t new_size = *size * 2;
+            char **tmp = realloc(*buffer, sizeof(**buffer) * new_size);
+            if (tmp == NULL) {
+                puts("Realloc failed");
+                return 0;
+            }
+
+            *buffer = tmp;
+            *size = new_size;
+        }
+
+        (*buffer)[len++] = token;
+    }
+
+    return len;
 }
 
 char *ks_current_date(char *buffer, size_t buffer_size, char *format) {

@@ -31,7 +31,6 @@ AppState g_app_state = {
 // if has AUMID use that to launch the application else just execute the executable
 int launch_win_store_application(wchar_t *aumid) {
     // @note(ksala): winrt::init_apartment() is triggered in C++ side and this here crashed the program
-    // maybe init and uninit here and remove from C++ side
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     if (FAILED(hr)) {
         printf("CoInitializeEx failed\n");
@@ -60,8 +59,6 @@ int launch_win_store_application(wchar_t *aumid) {
 
         // @note(ksala): lpVtbl is a table containing interface functions
         application_activation_manager->lpVtbl->Release(application_activation_manager);
-
-        // @todo: close application
     } else {
         printf("failed to launch the application\n");
         CoUninitialize();
@@ -127,6 +124,7 @@ int read_from_application_cache() {
     size_t line_count = 0;
     while(fgets(line, sizeof(line), file)) {
         line[strcspn(line, "\r\n")] = '\0';
+
         if (g_app_state.application_count == capacity) {
             size_t new_cap = capacity * 2;
             Application *tmp = realloc(g_app_state.applications, new_cap * sizeof(Application));
@@ -143,21 +141,30 @@ int read_from_application_cache() {
             capacity = new_cap;
         }
 
-        char **array = ks_split_string_to_array(line, ":", 2);
+        size_t buffer_size = 2;
+        char **buffer = malloc(sizeof(char *) * buffer_size);
+        if (buffer == NULL) {
+            puts("Could not allocate memory for buffer");
+            return -1;
+        }
 
-        Application application = {
-            .name = ks_clone_string(array[0]),
-            .path_to_exe = NULL,
-            .is_store_application = 1,
-            .aumid = ks_char_to_wide(array[1])
-        };
+        size_t len = ks_split_string_to_array(&buffer, &buffer_size, line, ":");
 
-        free(array);
+        if (len >= 2) {
+            Application application = {
+                .name = ks_clone_string(buffer[0]),
+                .path_to_exe = NULL,
+                .is_store_application = 1,
+                .aumid = ks_char_to_wide(buffer[1])
+            };
 
-        g_app_state.applications[g_app_state.application_count] = application;
-        g_app_state.application_count++;
-        line_count++;
+            g_app_state.applications[g_app_state.application_count] = application;
+            g_app_state.application_count++;
+            line_count++;
+        }
 
+
+        free(buffer);
     }
 
     fclose(file);
