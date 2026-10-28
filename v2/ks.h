@@ -6,6 +6,7 @@
  * Lib for common C stuff so I don't have to rewrite them
  *
  * - Functions
+ *    char **ks_split_string_to_array(char *str, char *delimiter, size_t size);
  *    char *ks_current_date(chat *buffer, size_t buffer_size, char *format);
  *    wchar_t *ks_char_to_wide(char *input);
  *    char *ks_clone_string(const char *str);
@@ -21,6 +22,23 @@
 #include <stdlib.h>
 #include <wchar.h>
 #include <time.h>
+
+char **ks_split_string_to_array(char *str, char *delimiter, size_t size) {
+    char **array = malloc(sizeof(char *) * size);
+    size_t count = 0;
+
+    char *token = strtok(str, delimiter);
+    array[count] = token;
+    count++;
+
+    while (token != NULL) {
+        token = strtok(NULL, delimiter);
+        array[count] = token;
+        count++;
+    }
+
+    return array;
+}
 
 char *ks_current_date(char *buffer, size_t buffer_size, char *format) {
     time_t now = time(NULL);

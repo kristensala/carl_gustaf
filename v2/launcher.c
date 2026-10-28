@@ -108,7 +108,61 @@ int write_application_cache() {
 }
 
 int read_from_application_cache() {
-    // @todo
+    FILE *file = fopen("launcher.storecache", "r");
+    if (file == NULL) {
+        puts("Failed to read cache");
+        return -1;
+    }
+
+    size_t capacity = 10;
+    g_app_state.applications = calloc(capacity, sizeof(Application));
+
+    if (g_app_state.applications == NULL) {
+        puts("Failed to allocate memory for lines array");
+        fclose(file);
+        return -1;
+    }
+
+    char line[256];
+    size_t line_count = 0;
+    while(fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (g_app_state.application_count == capacity) {
+            size_t new_cap = capacity * 2;
+            Application *tmp = realloc(g_app_state.applications, new_cap * sizeof(Application));
+
+            if (tmp == NULL) {
+                puts("Realloc failed");
+
+                fclose(file);
+                free(g_app_state.applications);
+                return -1;
+            }
+
+            g_app_state.applications = tmp;
+            capacity = new_cap;
+        }
+
+        char **array = ks_split_string_to_array(line, ":", 2);
+
+        Application application = {
+            .name = ks_clone_string(array[0]),
+            .path_to_exe = NULL,
+            .is_store_application = 1,
+            .aumid = ks_char_to_wide(array[1])
+        };
+
+        free(array);
+
+        g_app_state.applications[g_app_state.application_count] = application;
+        g_app_state.application_count++;
+        line_count++;
+
+    }
+
+    fclose(file);
+
+    return 0;
 }
 
 int launch_regular_application() {
@@ -260,6 +314,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             if (wParam == VK_RETURN) {
                 Application *selected_app = get_selected_application();
+                printf("%ls", selected_app->aumid);
                 if (selected_app != NULL) {
                     int result = launch_win_store_application(selected_app->aumid);
                     if (result == 0) {
@@ -349,7 +404,12 @@ int WINAPI WinMain(
     AppEntryList apps = {0};
 
 
-    int result = list_store_applications(&apps); // copy to a state and then free
+    int result = read_from_application_cache();
+    if (result < 0) {
+        puts("Failed to fetch applications from cache");
+    }
+
+    /*int result = list_store_applications(&apps); // copy to a state and then free
     if (result == 0) {
         g_app_state.applications = calloc(apps.count, sizeof(Application));
 
@@ -360,7 +420,6 @@ int WINAPI WinMain(
                 .is_store_application = 1,
                 .aumid = NULL
             };
-
 
             if (apps.items[i].app_user_model_id != NULL) {
                 application.aumid = ks_char_to_wide(apps.items[i].app_user_model_id);
@@ -378,7 +437,7 @@ int WINAPI WinMain(
 
         free_store_applications(&apps);
         write_application_cache();
-    }
+    }*/
 
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
