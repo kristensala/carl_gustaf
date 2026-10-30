@@ -114,6 +114,22 @@ static char *ks_clone_string(const char *str) {
     return copy;
 }
 
+static wchar_t *ks_clone_wstring(const wchar_t *str) {
+    if (str == NULL) {
+        return NULL;
+    }
+
+    size_t len = wcslen(str);
+    wchar_t *copy = malloc((len + 1) * sizeof(*copy));
+
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    wcscpy(copy, str); /* Includes the terminating L'\0'. */
+    return copy;
+}
+
 /*
  * Allocates memory. Pair with free.
  * Does not modify the input and returns a cloned (lowercase) string
@@ -124,6 +140,17 @@ static char *ks_string_to_lower(const char *str) {
     for (size_t i = 0; str_clone[i] != '\0'; ++i) {
         str_clone[i] = (char)tolower((unsigned char)str_clone[i]);
     }
+
+    return str_clone;
+}
+
+static wchar_t *ks_wide_to_lower(const wchar_t *str) {
+    wchar_t *str_clone = ks_clone_wstring(str);
+
+    for (wchar_t *p = str_clone; *p != L'\0'; ++p) {
+        *p = (wchar_t)towlower(*p);
+    }
+
 
     return str_clone;
 }

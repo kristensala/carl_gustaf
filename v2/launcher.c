@@ -20,7 +20,7 @@ AppState g_app_state = {
     .input_len = 0,
     .applications = NULL,
     .application_count = 0,
-    .application_capacity = 0,
+    .application_capacity = 1000,
     .search_results = NULL,
     .search_results_count = 0,
     .selected_application = NULL,
@@ -111,8 +111,7 @@ int read_from_application_cache() {
         return -1;
     }
 
-    size_t capacity = 10;
-    g_app_state.applications = calloc(capacity, sizeof(Application));
+    g_app_state.applications = calloc(g_app_state.application_capacity, sizeof(Application));
 
     if (g_app_state.applications == NULL) {
         puts("Failed to allocate memory for lines array");
@@ -125,8 +124,8 @@ int read_from_application_cache() {
     while(fgets(line, sizeof(line), file)) {
         line[strcspn(line, "\r\n")] = '\0';
 
-        if (g_app_state.application_count == capacity) {
-            size_t new_cap = capacity * 2;
+        if (g_app_state.application_count == g_app_state.application_capacity) {
+            size_t new_cap = g_app_state.application_capacity * 2;
             Application *tmp = realloc(g_app_state.applications, new_cap * sizeof(Application));
 
             if (tmp == NULL) {
@@ -138,7 +137,7 @@ int read_from_application_cache() {
             }
 
             g_app_state.applications = tmp;
-            capacity = new_cap;
+            g_app_state.application_capacity = new_cap;
         }
 
         size_t buffer_size = 2;
@@ -152,7 +151,7 @@ int read_from_application_cache() {
 
         if (len >= 2) {
             Application application = {
-                .name = ks_clone_string(buffer[0]),
+                .name = ks_char_to_wide(buffer[0]),
                 .path_to_exe = NULL,
                 .is_store_application = 1,
                 .aumid = ks_char_to_wide(buffer[1])
@@ -200,18 +199,92 @@ void remove_from_input() {
 //
 // START_MENU_PORGRAMS_PATH :: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\*"
 // PATH :: "\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\*"
-void scan_system_for_applications() {
-    /*WIN32_FIND_DATA file_data;
-    HANDLE search_handle = FindFirstFileW("todo", &file_data);
+void scan_system_for_applications(wchar_t *dir) {
+    WIN32_FIND_DATAW data;
+    HANDLE search;
+    DWORD error;
 
-    if (h_find == INVALID_HANDLE_VALUE) {
-        printf("Failed to read dir\n");
+    wchar_t full_path[32768];
+    int n = swprintf(
+            full_path,
+            sizeof(full_path) / sizeof(full_path[0]),
+            L"%ls\\*",
+            dir);
+
+    //wprintf(L"[DIR] %ls\n", full_path);
+
+    search = FindFirstFileW(full_path, &data);
+
+    if (search == INVALID_HANDLE_VALUE) {
+        error = GetLastError();
+
+        if (error == ERROR_FILE_NOT_FOUND) {
+            wprintf(L"No matching files.\n");
+            return;
+        }
+
+        fwprintf(stderr, L"FindFirstFileW failed: %lu\n", (unsigned long)error);
         return;
     }
 
     do {
-        // @todo
-    } while (FindNextFileW(search_handle, &file_data));*/
+        /* Skip the current and parent directory entries. */
+        if (wcscmp(data.cFileName, L".") == 0 || wcscmp(data.cFileName, L"..") == 0) {
+            continue;
+        }
+
+        bool is_directory = data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+
+        if (is_directory) {
+            wchar_t full_path[32768];
+
+            int n = swprintf(
+                    full_path,
+                    sizeof(full_path) / sizeof(full_path[0]),
+                    L"%ls\\%ls",
+                    dir,
+                    data.cFileName);
+            
+            scan_system_for_applications(full_path);
+        } else {
+            wprintf(L"[FILE] %ls [%ls]\n", data.cFileName, dir);
+            wchar_t exec_path[1024];
+            int n = swprintf(
+                    exec_path,
+                    sizeof(exec_path) / sizeof(exec_path[0]),
+                    L"%ls\\%ls",
+                    dir, data.cFileName);
+            if (n < 0) {
+                puts("Failed to build the exec path");
+                continue;
+            }
+            if (g_app_state.application_count == g_app_state.application_capacity) {
+                size_t new_cap = g_app_state.application_capacity * 2;
+                Application *tmp = realloc(g_app_state.applications, new_cap * sizeof(Application));
+
+                if (tmp == NULL) {
+                    puts("Realloc failed");
+                    free(g_app_state.applications);
+                    return;
+                }
+
+                g_app_state.applications = tmp;
+                g_app_state.application_capacity = new_cap;
+            }
+
+            Application application = {
+                .name = ks_clone_wstring(data.cFileName),
+                .path_to_exe = exec_path,
+                .is_store_application = 0,
+                .aumid = NULL
+            };
+
+            g_app_state.applications[g_app_state.application_count++] = application;
+        }
+
+
+    } while (FindNextFileW(search, &data));
+
 }
 
 void draw_application_list(HDC hdc) {
@@ -230,7 +303,7 @@ void draw_application_list(HDC hdc) {
             FillRect(hdc, &rect, blue_brush);
         }
 
-        DrawTextA(hdc, app->name, strlen(app->name), &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+        DrawTextW(hdc, app->name, wcslen(app->name), &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
         pos_y += 20;
 
@@ -245,13 +318,13 @@ void draw_application_list(HDC hdc) {
 void update_search_results() {
     g_app_state.search_results_count = 0;
 
-    char *input_lower = ks_string_to_lower(g_app_state.input);
+    wchar_t *input_lower = ks_wide_to_lower(g_app_state.input);
     for (size_t i = 0; i < g_app_state.application_count; ++i) {
         Application *app = &g_app_state.applications[i];
 
-        char *app_name_lower = ks_string_to_lower(app->name);
+        wchar_t *app_name_lower = ks_wide_to_lower(app->name);
 
-        if (strstr(app_name_lower, input_lower) != NULL) {
+        if (wcsstr(app_name_lower, input_lower) != NULL) {
             g_app_state.search_results[g_app_state.search_results_count++] = app;
         }
 
@@ -280,7 +353,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                           // @todo: CreateCaret api
             return 0;
         case WM_CHAR:
-            char c = (WCHAR)wParam;
+            wchar_t c = (WCHAR)wParam;
             int should_update_search = 0;
 
             if (c == 8) { // Backspace
@@ -323,10 +396,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 Application *selected_app = get_selected_application();
                 printf("%ls", selected_app->aumid);
                 if (selected_app != NULL) {
-                    int result = launch_win_store_application(selected_app->aumid);
-                    if (result == 0) {
-                        PostMessageA(hwnd, WM_CLOSE, 0, 0);
-                        return 0;
+                    if (selected_app->aumid != NULL) {
+                        int result = launch_win_store_application(selected_app->aumid);
+                        if (result == 0) {
+                            PostMessageA(hwnd, WM_CLOSE, 0, 0);
+                            return 0;
+                        }
+                    } else {
+                        // @todo: exec regular exe or lnk
                     }
                 }
             }
@@ -348,7 +425,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetBkMode(hdc, TRANSPARENT);
 
             // input text
-            DrawTextA(hdc, g_app_state.input, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+            DrawTextW(hdc, g_app_state.input, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
             draw_application_list(hdc);
 
@@ -415,6 +492,8 @@ int WINAPI WinMain(
     if (result < 0) {
         puts("Failed to fetch applications from cache");
     }
+    scan_system_for_applications(L"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs");
+
 
     /*int result = list_store_applications(&apps); // copy to a state and then free
     if (result == 0) {

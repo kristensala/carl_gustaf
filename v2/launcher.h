@@ -16,8 +16,8 @@ typedef struct {
 } LauncherMemory;
 
 typedef struct {
-    char *name;
-    char *path_to_exe;
+    wchar_t *name;
+    wchar_t *path_to_exe;
 
     /* if store application use aumid else use path_to_exe*/
     int is_store_application;
@@ -25,7 +25,7 @@ typedef struct {
 } Application;
 
 typedef struct {
-    char input[50];
+    wchar_t input[50];
     size_t input_len;
 
     Application *applications;
